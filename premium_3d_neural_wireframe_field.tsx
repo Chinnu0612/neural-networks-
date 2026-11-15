@@ -440,8 +440,8 @@ export function computeResponsiveLayout(viewportWidth = 30, viewportHeight = 10)
   else if (aspect < 2.3 ) tier = 'desktop';
 
   const halfWidth        = viewportWidth * 0.5;
-  // Central gap = 21% of canvas width (10.5% each side)
-  const innerGapHalfWidth = halfWidth * (tier === 'mobile' ? 0.14 : 0.105);
+  // Central gap = 10-12% of canvas width (5-6% each side) - matching TARGET_REFERENCE
+  const innerGapHalfWidth = halfWidth * (tier === 'mobile' ? 0.08 : 0.055);
   const outerExtentX      = halfWidth * 1.02;
   const horizontalSpan    = Math.max(outerExtentX - innerGapHalfWidth, 2.5);
 
@@ -499,109 +499,81 @@ function evalSurface(u, v, desc, layerCfg, sideCfg, layout) {
   if (!isRight) {
     // ======================= LEFT FORMATION ==================================
     if (streamId === 0) {
-      // Sheet 0 — broad single-arch S-curve (≈1.3 cycles) — large wave silhouette
-      // Enters upper-left, dips to valley at u≈0.52, rises to inner crest at u≈0.78
+      // Sheet 0 — smooth broad flowing wave (≈1.2 cycles) — distributed crests and troughs
       const top =
-         0.82 * Math.cos(us * Math.PI * 1.30 + 0.14 + ph) * envelope
-        + 0.26 * Math.exp(-uc * 2.2)
-        - 0.18 * gp(uc, 0.52, 0.17)
-        + 0.14 * gp(uc, 0.78, 0.15);
+         0.68 * Math.cos(us * Math.PI * 1.15 + 0.10 + ph) * envelope
+        + 0.18 * Math.cos(us * Math.PI * 2.45 - 0.25 + ph) * envelope
+        + 0.12 * Math.exp(-uc * 2.5);
       const bot =
-         0.20 * Math.cos(us * Math.PI * 1.20 + 0.60 + ph) * envelope
-        - 0.26 * gp(uc, 0.34, 0.14)
-        - 0.60 * gp(uc, 0.52, 0.18)
-        + 0.12 * gp(uc, 0.76, 0.14);
+         0.48 * Math.cos(us * Math.PI * 1.10 + 0.75 + ph) * envelope
+        - 0.16 * Math.cos(us * Math.PI * 2.30 + 0.40 + ph) * envelope
+        - 0.14 * Math.exp(-uc * 2.2);
       ySheet = THREE.MathUtils.lerp(bot, top, streamV);
 
     } else if (streamId === 1) {
-      // Sheet 1 — tighter counter-flow (≈2.0 cycles) — inner wave silhouette
-      // Enters lower-left, arches upward at u≈0.28, dips at u≈0.56, rises again at u≈0.76
+      // Sheet 1 — smooth counter-flow (≈1.8 cycles) — interwoven with Sheet 0
       const top =
-        -0.14 * Math.exp(-uc * 2.0)
-        + 0.72 * gp(uc, 0.28, 0.16) * innerTaper
-        - 0.44 * gp(uc, 0.56, 0.16) * innerTaper
-        + 0.30 * gp(uc, 0.76, 0.14) * innerTaper
-        + 0.18 * Math.sin(us * Math.PI * 1.95 - 0.52 + ph) * innerTaper;
+         0.52 * Math.sin(us * Math.PI * 1.75 - 0.45 + ph) * envelope
+        + 0.20 * Math.sin(us * Math.PI * 3.10 + 0.20 + ph) * envelope * innerTaper
+        + 0.10 * Math.exp(-uc * 2.8);
       const bot =
-        -0.72 * Math.exp(-uc * 1.75)
-        + 0.08 * gp(uc, 0.28, 0.16) * innerTaper
-        - 0.60 * gp(uc, 0.56, 0.17) * innerTaper
-        + 0.14 * gp(uc, 0.76, 0.14) * innerTaper
-        + 0.14 * Math.sin(us * Math.PI * 1.80 - 0.90 + ph) * innerTaper;
+        -0.58 * Math.exp(-uc * 1.85)
+        + 0.32 * Math.sin(us * Math.PI * 1.65 - 0.85 + ph) * envelope
+        + 0.14 * Math.sin(us * Math.PI * 2.95 - 0.50 + ph) * envelope * innerTaper;
       ySheet = THREE.MathUtils.lerp(bot, top, streamV);
 
     } else {
       // Sheet 2 — accent / canopy
       if (accentProfile === 1) {
-        ySheet = (-0.44 * Math.exp(-uc * 2.1)
-          - 0.70 * gp(uc, 0.36, 0.17)
-          - 0.22 * gp(uc, 0.58, 0.14)
-          + 0.14 * gp(uc, 0.76, 0.13)) * innerTaper;
+        ySheet = (-0.52 * Math.exp(-uc * 1.95)
+          - 0.28 * Math.cos(us * Math.PI * 1.55 + 0.60 + ph) * envelope) * innerTaper;
       } else if (accentProfile === 2) {
-        ySheet = ( 0.30 * Math.exp(-uc * 2.2)
-          - 0.14 * gp(uc, 0.34, 0.12)
-          + 0.38 * gp(uc, 0.52, 0.15)
-          - 0.22 * gp(uc, 0.70, 0.13)
-          + 0.11 * gp(uc, 0.84, 0.10)) * innerTaper;
+        ySheet = ( 0.38 * Math.exp(-uc * 2.1)
+          + 0.24 * Math.sin(us * Math.PI * 1.70 - 0.30 + ph) * envelope) * innerTaper;
       } else {
         const cSign = sLocal >= 0 ? 1.0 : -1.0;
-        ySheet = cSign * (1.08 * Math.exp(-uc * 1.6)
-          + 0.36 * gp(uc, 0.42, 0.22)
-          - 0.10 * gp(uc, 0.26, 0.14)) * innerTaper
-          + 0.10 * Math.sin(us * Math.PI * 1.5 + strandPhase) * innerTaper;
+        ySheet = cSign * (0.95 * Math.exp(-uc * 1.65)
+          + 0.22 * Math.cos(us * Math.PI * 1.40 + strandPhase) * envelope) * innerTaper;
       }
     }
 
   } else {
     // ======================= RIGHT FORMATION =================================
     if (streamId === 0) {
-      // Sheet 0 — broad single-arch (≈1.3 cycles) — enters high-right, troughs at u≈0.50
+      // Sheet 0 — smooth broad flowing wave (≈1.2 cycles)
       const top =
-         0.86 * Math.exp(-uc * 1.55)
-        + 0.28 * gp(uc, 0.18, 0.14)
-        - 0.26 * gp(uc, 0.50, 0.17) * innerTaper
-        + 0.18 * gp(uc, 0.74, 0.14) * innerTaper
-        + 0.22 * Math.cos(us * Math.PI * 1.28 - 0.20 + ph) * innerTaper;
+         0.72 * Math.exp(-uc * 1.60)
+        + 0.42 * Math.cos(us * Math.PI * 1.18 - 0.15 + ph) * envelope
+        + 0.18 * Math.cos(us * Math.PI * 2.50 + 0.20 + ph) * envelope;
       const bot =
-         0.18 * Math.exp(-uc * 1.90)
-        - 0.64 * gp(uc, 0.50, 0.18) * innerTaper
-        + 0.16 * gp(uc, 0.74, 0.14) * innerTaper
-        + 0.22 * Math.cos(us * Math.PI * 1.38 + 0.28 + ph) * innerTaper;
+         0.15 * Math.exp(-uc * 2.0)
+        + 0.38 * Math.cos(us * Math.PI * 1.12 + 0.60 + ph) * envelope
+        - 0.16 * Math.cos(us * Math.PI * 2.35 - 0.30 + ph) * envelope;
       ySheet = THREE.MathUtils.lerp(bot, top, streamV);
 
     } else if (streamId === 1) {
-      // Sheet 1 — counter-flow (≈2.0 cycles)
+      // Sheet 1 — smooth counter-flow (≈1.8 cycles)
       const top =
-        -0.18 * Math.exp(-uc * 1.95)
-        + 0.68 * gp(uc, 0.30, 0.16) * innerTaper
-        - 0.48 * gp(uc, 0.58, 0.16) * innerTaper
-        + 0.26 * gp(uc, 0.76, 0.14) * innerTaper
-        + 0.16 * Math.sin(us * Math.PI * 1.90 - 0.30 + ph) * innerTaper;
+         0.48 * Math.sin(us * Math.PI * 1.78 - 0.25 + ph) * envelope
+        + 0.22 * Math.sin(us * Math.PI * 3.15 - 0.10 + ph) * envelope * innerTaper
+        + 0.08 * Math.exp(-uc * 2.5);
       const bot =
-        -0.80 * Math.exp(-uc * 1.65)
-        + 0.08 * gp(uc, 0.30, 0.16) * innerTaper
-        - 0.52 * gp(uc, 0.58, 0.17) * innerTaper
-        + 0.14 * gp(uc, 0.76, 0.14) * innerTaper
-        + 0.14 * Math.sin(us * Math.PI * 1.75 - 0.72 + ph) * innerTaper;
+        -0.65 * Math.exp(-uc * 1.75)
+        + 0.30 * Math.sin(us * Math.PI * 1.68 - 0.70 + ph) * envelope
+        + 0.16 * Math.sin(us * Math.PI * 3.00 + 0.40 + ph) * envelope * innerTaper;
       ySheet = THREE.MathUtils.lerp(bot, top, streamV);
 
     } else {
       if (accentProfile === 1) {
-        ySheet = (-0.90 * Math.exp(-uc * 1.68)
-          - 0.38 * gp(uc, 0.22, 0.15)
-          - 0.22 * gp(uc, 0.48, 0.14)
-          + 0.18 * gp(uc, 0.70, 0.13)) * innerTaper;
+        ySheet = (-0.68 * Math.exp(-uc * 1.72)
+          - 0.26 * Math.cos(us * Math.PI * 1.58 - 0.50 + ph) * envelope) * innerTaper;
       } else if (accentProfile === 2) {
-        ySheet = ( 0.32 * Math.exp(-uc * 2.2)
-          - 0.12 * gp(uc, 0.30, 0.12)
-          + 0.62 * gp(uc, 0.52, 0.15)
-          - 0.18 * gp(uc, 0.72, 0.12)) * innerTaper;
+        ySheet = ( 0.42 * Math.exp(-uc * 2.2)
+          + 0.28 * Math.sin(us * Math.PI * 1.75 + 0.25 + ph) * envelope) * innerTaper;
       } else {
         const cSign = sLocal >= 0 ? 1.0 : -1.0;
-        ySheet = cSign * (1.10 * Math.exp(-uc * 1.56)
-          + 0.36 * gp(uc, 0.24, 0.20)
-          + 0.24 * gp(uc, 0.52, 0.18)) * innerTaper
-          + 0.10 * Math.cos(us * Math.PI * 1.46 + strandPhase) * innerTaper;
+        ySheet = cSign * (1.00 * Math.exp(-uc * 1.58)
+          + 0.24 * Math.cos(us * Math.PI * 1.42 + strandPhase) * envelope) * innerTaper;
       }
     }
   }
@@ -716,13 +688,13 @@ function makeStrandDescriptors(layerIndex, isRight, densityScale, rng) {
       const zPhase        = streamId * 1.06 + sv * 0.95 + (rng() - 0.5) * 0.18;
       const zBias         = (sv - 0.5) * 0.40 + (rng() - 0.5) * 0.14;
 
-      const reachMod = isPrimary ? 0.96 + 0.04 * rng()
-        : role === 'canopy' ? 0.80 + 0.12 * rng()
-        : 0.86 + 0.10 * sv + 0.02 * rng();
+      const reachMod = isPrimary ? 0.98 + 0.02 * rng()
+        : role === 'canopy' ? 0.88 + 0.10 * rng()
+        : 0.92 + 0.07 * sv + 0.01 * rng();
 
-      const fadeEndU = isPrimary ? 0.96 + 0.03 * rng()
-        : role === 'canopy' ? 0.80 + 0.12 * rng()
-        : 0.86 + 0.10 * sv + 0.02 * rng();
+      const fadeEndU = isPrimary ? 0.98 + 0.02 * rng()
+        : role === 'canopy' ? 0.88 + 0.10 * rng()
+        : 0.92 + 0.07 * sv + 0.01 * rng();
 
       const terminalYOffset =
         (streamId === 0 ? 0.05 : streamId === 1 ? -0.05 : 0.0)
@@ -1046,7 +1018,7 @@ export function generateNeuralWireGeometry(layout) {
       // Organic density: peaks at mid-u (wave chamber interior), lower at edges
       const cellDensityAt = (u, v, pp) => {
         // Smooth mountain function peaking around u=0.4..0.6 for each side
-        const uPeak = isRight ? 0.42 : 0.44;
+        const uPeak = sideCfg.isRight ? 0.42 : 0.44;
         const chamberBoost = gp(u, uPeak, 0.28) * 0.5 + gp(u, uPeak + 0.30, 0.22) * 0.35;
         const pinchBoost   = pp * 0.4;
         const noise        = 0.5 + 0.3 * Math.sin(u * 11.3 + v * 7.1) + 0.2 * Math.cos(u * 7.7 - v * 5.3);

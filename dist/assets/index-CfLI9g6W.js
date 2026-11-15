@@ -65809,7 +65809,7 @@ function computeResponsiveLayout(viewportWidth = 30, viewportHeight = 10) {
   else if (aspect < 1.55) tier = "tablet";
   else if (aspect < 2.3) tier = "desktop";
   const halfWidth = viewportWidth * 0.5;
-  const innerGapHalfWidth = halfWidth * (tier === "mobile" ? 0.14 : 0.105);
+  const innerGapHalfWidth = halfWidth * (tier === "mobile" ? 0.08 : 0.055);
   const outerExtentX = halfWidth * 1.02;
   const horizontalSpan = Math.max(outerExtentX - innerGapHalfWidth, 2.5);
   const heightBased = viewportHeight * (tier === "mobile" ? 0.26 : tier === "tablet" ? 0.29 : 0.32);
@@ -65835,7 +65835,7 @@ function gp(u, center, width) {
   return Math.exp(-d * d);
 }
 function evalSurface(u, v, desc, layerCfg, sideCfg, layout) {
-  const { sideSign, isRight: isRight2 } = sideCfg;
+  const { sideSign, isRight } = sideCfg;
   const { zBaseOffset, verticalSpreadScale, phaseShift, layerIndex } = layerCfg;
   const {
     streamId,
@@ -65861,42 +65861,42 @@ function evalSurface(u, v, desc, layerCfg, sideCfg, layout) {
   const us = uc * layout.cycleScale;
   const ph = phaseShift * 0.22;
   let ySheet = 0;
-  if (!isRight2) {
+  if (!isRight) {
     if (streamId === 0) {
-      const top = 0.82 * Math.cos(us * Math.PI * 1.3 + 0.14 + ph) * envelope + 0.26 * Math.exp(-uc * 2.2) - 0.18 * gp(uc, 0.52, 0.17) + 0.14 * gp(uc, 0.78, 0.15);
-      const bot = 0.2 * Math.cos(us * Math.PI * 1.2 + 0.6 + ph) * envelope - 0.26 * gp(uc, 0.34, 0.14) - 0.6 * gp(uc, 0.52, 0.18) + 0.12 * gp(uc, 0.76, 0.14);
+      const top = 0.68 * Math.cos(us * Math.PI * 1.15 + 0.1 + ph) * envelope + 0.18 * Math.cos(us * Math.PI * 2.45 - 0.25 + ph) * envelope + 0.12 * Math.exp(-uc * 2.5);
+      const bot = 0.48 * Math.cos(us * Math.PI * 1.1 + 0.75 + ph) * envelope - 0.16 * Math.cos(us * Math.PI * 2.3 + 0.4 + ph) * envelope - 0.14 * Math.exp(-uc * 2.2);
       ySheet = MathUtils.lerp(bot, top, streamV);
     } else if (streamId === 1) {
-      const top = -0.14 * Math.exp(-uc * 2) + 0.72 * gp(uc, 0.28, 0.16) * innerTaper - 0.44 * gp(uc, 0.56, 0.16) * innerTaper + 0.3 * gp(uc, 0.76, 0.14) * innerTaper + 0.18 * Math.sin(us * Math.PI * 1.95 - 0.52 + ph) * innerTaper;
-      const bot = -0.72 * Math.exp(-uc * 1.75) + 0.08 * gp(uc, 0.28, 0.16) * innerTaper - 0.6 * gp(uc, 0.56, 0.17) * innerTaper + 0.14 * gp(uc, 0.76, 0.14) * innerTaper + 0.14 * Math.sin(us * Math.PI * 1.8 - 0.9 + ph) * innerTaper;
+      const top = 0.52 * Math.sin(us * Math.PI * 1.75 - 0.45 + ph) * envelope + 0.2 * Math.sin(us * Math.PI * 3.1 + 0.2 + ph) * envelope * innerTaper + 0.1 * Math.exp(-uc * 2.8);
+      const bot = -0.58 * Math.exp(-uc * 1.85) + 0.32 * Math.sin(us * Math.PI * 1.65 - 0.85 + ph) * envelope + 0.14 * Math.sin(us * Math.PI * 2.95 - 0.5 + ph) * envelope * innerTaper;
       ySheet = MathUtils.lerp(bot, top, streamV);
     } else {
       if (accentProfile === 1) {
-        ySheet = (-0.44 * Math.exp(-uc * 2.1) - 0.7 * gp(uc, 0.36, 0.17) - 0.22 * gp(uc, 0.58, 0.14) + 0.14 * gp(uc, 0.76, 0.13)) * innerTaper;
+        ySheet = (-0.52 * Math.exp(-uc * 1.95) - 0.28 * Math.cos(us * Math.PI * 1.55 + 0.6 + ph) * envelope) * innerTaper;
       } else if (accentProfile === 2) {
-        ySheet = (0.3 * Math.exp(-uc * 2.2) - 0.14 * gp(uc, 0.34, 0.12) + 0.38 * gp(uc, 0.52, 0.15) - 0.22 * gp(uc, 0.7, 0.13) + 0.11 * gp(uc, 0.84, 0.1)) * innerTaper;
+        ySheet = (0.38 * Math.exp(-uc * 2.1) + 0.24 * Math.sin(us * Math.PI * 1.7 - 0.3 + ph) * envelope) * innerTaper;
       } else {
         const cSign = sLocal >= 0 ? 1 : -1;
-        ySheet = cSign * (1.08 * Math.exp(-uc * 1.6) + 0.36 * gp(uc, 0.42, 0.22) - 0.1 * gp(uc, 0.26, 0.14)) * innerTaper + 0.1 * Math.sin(us * Math.PI * 1.5 + strandPhase) * innerTaper;
+        ySheet = cSign * (0.95 * Math.exp(-uc * 1.65) + 0.22 * Math.cos(us * Math.PI * 1.4 + strandPhase) * envelope) * innerTaper;
       }
     }
   } else {
     if (streamId === 0) {
-      const top = 0.86 * Math.exp(-uc * 1.55) + 0.28 * gp(uc, 0.18, 0.14) - 0.26 * gp(uc, 0.5, 0.17) * innerTaper + 0.18 * gp(uc, 0.74, 0.14) * innerTaper + 0.22 * Math.cos(us * Math.PI * 1.28 - 0.2 + ph) * innerTaper;
-      const bot = 0.18 * Math.exp(-uc * 1.9) - 0.64 * gp(uc, 0.5, 0.18) * innerTaper + 0.16 * gp(uc, 0.74, 0.14) * innerTaper + 0.22 * Math.cos(us * Math.PI * 1.38 + 0.28 + ph) * innerTaper;
+      const top = 0.72 * Math.exp(-uc * 1.6) + 0.42 * Math.cos(us * Math.PI * 1.18 - 0.15 + ph) * envelope + 0.18 * Math.cos(us * Math.PI * 2.5 + 0.2 + ph) * envelope;
+      const bot = 0.15 * Math.exp(-uc * 2) + 0.38 * Math.cos(us * Math.PI * 1.12 + 0.6 + ph) * envelope - 0.16 * Math.cos(us * Math.PI * 2.35 - 0.3 + ph) * envelope;
       ySheet = MathUtils.lerp(bot, top, streamV);
     } else if (streamId === 1) {
-      const top = -0.18 * Math.exp(-uc * 1.95) + 0.68 * gp(uc, 0.3, 0.16) * innerTaper - 0.48 * gp(uc, 0.58, 0.16) * innerTaper + 0.26 * gp(uc, 0.76, 0.14) * innerTaper + 0.16 * Math.sin(us * Math.PI * 1.9 - 0.3 + ph) * innerTaper;
-      const bot = -0.8 * Math.exp(-uc * 1.65) + 0.08 * gp(uc, 0.3, 0.16) * innerTaper - 0.52 * gp(uc, 0.58, 0.17) * innerTaper + 0.14 * gp(uc, 0.76, 0.14) * innerTaper + 0.14 * Math.sin(us * Math.PI * 1.75 - 0.72 + ph) * innerTaper;
+      const top = 0.48 * Math.sin(us * Math.PI * 1.78 - 0.25 + ph) * envelope + 0.22 * Math.sin(us * Math.PI * 3.15 - 0.1 + ph) * envelope * innerTaper + 0.08 * Math.exp(-uc * 2.5);
+      const bot = -0.65 * Math.exp(-uc * 1.75) + 0.3 * Math.sin(us * Math.PI * 1.68 - 0.7 + ph) * envelope + 0.16 * Math.sin(us * Math.PI * 3 + 0.4 + ph) * envelope * innerTaper;
       ySheet = MathUtils.lerp(bot, top, streamV);
     } else {
       if (accentProfile === 1) {
-        ySheet = (-0.9 * Math.exp(-uc * 1.68) - 0.38 * gp(uc, 0.22, 0.15) - 0.22 * gp(uc, 0.48, 0.14) + 0.18 * gp(uc, 0.7, 0.13)) * innerTaper;
+        ySheet = (-0.68 * Math.exp(-uc * 1.72) - 0.26 * Math.cos(us * Math.PI * 1.58 - 0.5 + ph) * envelope) * innerTaper;
       } else if (accentProfile === 2) {
-        ySheet = (0.32 * Math.exp(-uc * 2.2) - 0.12 * gp(uc, 0.3, 0.12) + 0.62 * gp(uc, 0.52, 0.15) - 0.18 * gp(uc, 0.72, 0.12)) * innerTaper;
+        ySheet = (0.42 * Math.exp(-uc * 2.2) + 0.28 * Math.sin(us * Math.PI * 1.75 + 0.25 + ph) * envelope) * innerTaper;
       } else {
         const cSign = sLocal >= 0 ? 1 : -1;
-        ySheet = cSign * (1.1 * Math.exp(-uc * 1.56) + 0.36 * gp(uc, 0.24, 0.2) + 0.24 * gp(uc, 0.52, 0.18)) * innerTaper + 0.1 * Math.cos(us * Math.PI * 1.46 + strandPhase) * innerTaper;
+        ySheet = cSign * (1 * Math.exp(-uc * 1.58) + 0.24 * Math.cos(us * Math.PI * 1.42 + strandPhase) * envelope) * innerTaper;
       }
     }
   }
@@ -65906,9 +65906,9 @@ function evalSurface(u, v, desc, layerCfg, sideCfg, layout) {
   const depthSign = streamId === 0 ? 1 : streamId === 1 ? -1 : 0.5 * sLocal;
   const zWeave = (depthSign * 0.85 * Math.sin(uc * Math.PI * 1.6 + zPhase) + 0.44 * Math.cos(uc * Math.PI * 2.2 + strandPhase * 0.65) + sLocal * 0.5 + zBias) * innerTaper;
   const z = zBaseOffset + zWeave - layerIndex * 0.26 * uc;
-  const nexusUs = isRight2 ? [0.18, 0.34, 0.5, 0.68] : [0.14, 0.34, 0.52, 0.68];
+  const nexusUs = isRight ? [0.18, 0.34, 0.5, 0.68] : [0.14, 0.34, 0.52, 0.68];
   const pinchProx = nexusUs.reduce((mx, nu) => Math.max(mx, gp(uc, nu, 0.09)), 0);
-  const crestUs = isRight2 ? [0.18, 0.5, 0.74] : [0.22, 0.52, 0.76];
+  const crestUs = isRight ? [0.18, 0.5, 0.74] : [0.22, 0.52, 0.76];
   const crestProx = crestUs.reduce((mx, cu) => Math.max(mx, gp(uc, cu, 0.13)), 0);
   const outerFade = MathUtils.smoothstep(uc, 0, 0.025);
   const fadeStart = Math.max(0.72, fadeEndU - 0.22);
@@ -65916,7 +65916,7 @@ function evalSurface(u, v, desc, layerCfg, sideCfg, layout) {
   const edgeFade = outerFade * Math.pow(innerFade, 1.1);
   return { x, y, z, u: uc, v, pinchProx, crestProx, edgeFade };
 }
-function makeStrandDescriptors(layerIndex, isRight2, densityScale, rng) {
+function makeStrandDescriptors(layerIndex, isRight, densityScale, rng) {
   const descs = [];
   const s0n = Math.max(5, Math.round((layerIndex === 0 ? 13 : layerIndex === 1 ? 9 : 6) * densityScale));
   const s1n = Math.max(5, Math.round((layerIndex === 0 ? 13 : layerIndex === 1 ? 9 : 6) * densityScale));
@@ -65934,8 +65934,8 @@ function makeStrandDescriptors(layerIndex, isRight2, densityScale, rng) {
       let heroWeight = 0;
       let isBeadCanopy = false;
       if (streamId === 0) {
-        const idxA = Math.round((count - 1) * (isRight2 ? 0.8 : 0.82));
-        const idxB = Math.round((count - 1) * (isRight2 ? 0.5 : 0.5));
+        const idxA = Math.round((count - 1) * (isRight ? 0.8 : 0.82));
+        const idxB = Math.round((count - 1) * (isRight ? 0.5 : 0.5));
         const idxC = Math.round((count - 1) * 0.2);
         if (layerIndex <= 1 && (k === idxA || k === idxB || layerIndex === 0 && k === idxC)) {
           role = "primary";
@@ -65943,7 +65943,7 @@ function makeStrandDescriptors(layerIndex, isRight2, densityScale, rng) {
           heroWeight = k === idxA ? 1 : k === idxB ? 0.9 : 0.82;
         }
       } else if (streamId === 1) {
-        const idxD = Math.round((count - 1) * (isRight2 ? 0.8 : 0.82));
+        const idxD = Math.round((count - 1) * (isRight ? 0.8 : 0.82));
         const idxE = Math.round((count - 1) * 0.22);
         if (layerIndex <= 1 && (k === idxD || layerIndex === 0 && k === idxE)) {
           role = "primary";
@@ -65968,14 +65968,14 @@ function makeStrandDescriptors(layerIndex, isRight2, densityScale, rng) {
         }
       }
       const effSLocal = streamId === 2 && k >= 2 ? count > 3 ? (k - 2) / (count - 3) * 2 - 1 : k === 2 ? 1 : -1 : sLoc;
-      const basePhase = streamId === 0 ? isRight2 ? 0.22 : -0.2 : streamId === 1 ? isRight2 ? -0.52 : 0.46 : isRight2 ? 0.6 : -0.5;
+      const basePhase = streamId === 0 ? isRight ? 0.22 : -0.2 : streamId === 1 ? isRight ? -0.52 : 0.46 : isRight ? 0.6 : -0.5;
       const strandPhase = basePhase + effSLocal * 0.6 + (rng() - 0.5) * 0.12;
       const freq2 = 0.9 + 0.18 * sv + (rng() - 0.5) * 0.06;
       const ampMod = 0.88 + 0.24 * Math.sin(sv * Math.PI);
       const zPhase = streamId * 1.06 + sv * 0.95 + (rng() - 0.5) * 0.18;
       const zBias = (sv - 0.5) * 0.4 + (rng() - 0.5) * 0.14;
-      const reachMod = isPrimary ? 0.96 + 0.04 * rng() : role === "canopy" ? 0.8 + 0.12 * rng() : 0.86 + 0.1 * sv + 0.02 * rng();
-      const fadeEndU = isPrimary ? 0.96 + 0.03 * rng() : role === "canopy" ? 0.8 + 0.12 * rng() : 0.86 + 0.1 * sv + 0.02 * rng();
+      const reachMod = isPrimary ? 0.98 + 0.02 * rng() : role === "canopy" ? 0.88 + 0.1 * rng() : 0.92 + 0.07 * sv + 0.01 * rng();
+      const fadeEndU = isPrimary ? 0.98 + 0.02 * rng() : role === "canopy" ? 0.88 + 0.1 * rng() : 0.92 + 0.07 * sv + 0.01 * rng();
       const terminalYOffset = (streamId === 0 ? 0.05 : streamId === 1 ? -0.05 : 0) + effSLocal * 0.12 + (rng() - 0.5) * 0.04;
       descs.push({
         strandIndex: gj,
@@ -66272,7 +66272,7 @@ function generateNeuralWireGeometry(layout) {
         return true;
       };
       const cellDensityAt = (u, v, pp) => {
-        const uPeak = isRight ? 0.42 : 0.44;
+        const uPeak = sideCfg.isRight ? 0.42 : 0.44;
         const chamberBoost = gp(u, uPeak, 0.28) * 0.5 + gp(u, uPeak + 0.3, 0.22) * 0.35;
         const pinchBoost = pp * 0.4;
         const noise = 0.5 + 0.3 * Math.sin(u * 11.3 + v * 7.1) + 0.2 * Math.cos(u * 7.7 - v * 5.3);
