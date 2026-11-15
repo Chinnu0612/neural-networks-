@@ -236,8 +236,9 @@ const NODE_VERT = /* glsl */`
     vAlpha     = clamp(aAlpha * uOpacity, 0.0, 1.0);
     vTier      = aNodeTier;
 
-    float ps = 280.0 / max(-mv.z, 1.0);
-    gl_PointSize = clamp(aNodeSize * ps * uPixelRatio, 2.5, 80.0); // cap at 80 — no giant starbursts (DEF-09)
+    // Phase 3: increase node size scale to make nodes visually dominant
+    float ps = 680.0 / max(-mv.z, 1.0);  // 2.4× base scale
+    gl_PointSize = clamp(aNodeSize * ps * uPixelRatio, 4.5, 120.0); // higher min/max for prominence
     gl_Position  = projectionMatrix * mv;
   }
 `;
@@ -368,7 +369,7 @@ export function createNeuralWireMaterials(resolvedTheme, pixelRatio = 1) {
       uSecondaryColor:    { value: colors.secondaryWire.clone() },
       uAccentColor:       { value: colors.accentWire.clone()    },
       uHighlightColor:    { value: colors.highlightNode.clone() },
-      uOpacity:           { value: opacity       },
+      uOpacity:           { value: opacity * 0.28 },  // Phase 3: reduce wire opacity to make nodes dominant
       uGlowIntensity:     { value: glowIntensity },
       uLayerOpacityScale: { value: layerOpacityScale },
       uTime:              { value: 0.0 },  // Phase 2 animation
@@ -388,8 +389,8 @@ export function createNeuralWireMaterials(resolvedTheme, pixelRatio = 1) {
       uAccentColor:    { value: colors.accentWire.clone()    },
       uNodeColor:      { value: colors.node.clone()          },
       uHighlightColor: { value: colors.highlightNode.clone() },
-      uOpacity:        { value: opacity       },
-      uGlowIntensity:  { value: glowIntensity },
+      uOpacity:        { value: opacity * 1.25 },  // Phase 3: boost node opacity to make them dominant
+      uGlowIntensity:  { value: glowIntensity * 1.35 },  // Phase 3: increase node glow
       uPixelRatio:     { value: dpr           },
       uTime:           { value: 0.0 },  // Phase 2 animation
       uAnimationIntensity:{ value: 1.0 },  // Phase 2 animation
@@ -1193,10 +1194,11 @@ export function generateNeuralWireGeometry(layout) {
           }
 
           if (desc.isBeadCanopy && layerIndex === 0 && i % 2 === 0 && gv.u < 0.76) {
+            // Phase 3: increase canopy bead sizes (2.5× scale)
             pushNode(nodeData, gv,
               [0.82, 0.22, 0.18, 0.50],
-              gv.edgeFade * (0.82 + 0.12 * rng()),
-              0.17 + 0.07 * rng(),
+              gv.edgeFade * (0.88 + 0.10 * rng()),  // boost alpha
+              (0.17 + 0.07 * rng()) * 2.5,
               i % 6 === 0 ? 1.0 : 0.0);
             continue;
           }
@@ -1210,19 +1212,21 @@ export function generateNeuralWireGeometry(layout) {
 
           if (isMedium) {
             const aM = desc.role === 'accent' ? 0.80 : 0.14 + 0.22 * rng();
+            // Phase 3: increase medium node sizes (2.5× base scale)
             pushNode(nodeData, gv,
               [0.86, 0.14, aM, 0.70],
-              gv.edgeFade * (0.86 + 0.12 * rng()),
-              0.22 + 0.10 * rng() + 0.012 * Math.min(deg, 5), 1.0);
+              gv.edgeFade * (0.92 + 0.08 * rng()),  // boost alpha
+              (0.22 + 0.10 * rng() + 0.012 * Math.min(deg, 5)) * 2.5, 1.0);
           } else {
             const smallP = layerIndex === 0 ? Math.min(0.62, 0.28 + 0.08 * deg + 0.18 * gv.pinchProx)
               : layerIndex === 1 ? Math.min(0.40, 0.16 + 0.06 * deg) : 0.11;
             if (rng() < smallP) {
               const app = vertexAppearance(gv, desc, layerIndex, 'filament');
+              // Phase 3: increase small node sizes (2.5× base scale)
               pushNode(nodeData, gv,
                 [Math.max(0.74, app.weights[0]), app.weights[1] * 0.4, app.weights[2] * 0.5, 0.38 + 0.24 * gv.pinchProx],
-                gv.edgeFade * (0.78 + 0.16 * rng()),
-                0.12 + 0.06 * rng(), 0.0);
+                gv.edgeFade * (0.84 + 0.14 * rng()),  // boost alpha
+                (0.12 + 0.06 * rng()) * 2.5, 0.0);
             }
           }
         }
@@ -1230,9 +1234,10 @@ export function generateNeuralWireGeometry(layout) {
 
       // ---- Highlight nexus nodes (Tier 2) — balanced per side (DEF-05) ----
       // 4 highlight nodes per side, same logic for left and right
+      // Phase 3: increase sizes significantly to make highlight nodes dominant visual anchors
       if (layerIndex === 0) {
         const nexusUs = sideCfg.isRight ? [0.18, 0.34, 0.50, 0.68] : [0.14, 0.34, 0.52, 0.68];
-        const nexusSizes = [0.88, 0.92, 0.80, 0.68]; // same scale both sides (DEF-05)
+        const nexusSizes = [2.64, 2.76, 2.40, 2.04]; // 3× base scale for visual dominance
 
         nexusUs.forEach((uT, ni) => {
           const iMin = Math.max(1, Math.round((uT - 0.06) * (numU - 1)));
