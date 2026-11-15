@@ -23,6 +23,7 @@
  */
 
 import React, { useMemo, useEffect, useRef, useState } from 'react';
+import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 
 /* ============================================================================
@@ -86,12 +87,45 @@ const WIRE_VERT = /* glsl */`
   uniform float uGlowIntensity;
   uniform float uLayerOpacityScale;
 
+  // Phase 2 — Animation uniforms
+  uniform float uTime;
+  uniform float uAnimationIntensity;
+
   varying vec3  vColor;
   varying float vAlpha;
 
   void main() {
-    // Phase 1: static — position == aBasePosition
-    vec3 pos = position;
+    // Phase 2: organic vertex displacement based on parametric coordinates
+    vec3 pos = aBasePosition;
+    
+    if (uAnimationIntensity > 0.001) {
+      float u = aUvParam.x;
+      float v = aUvParam.y;
+      float sideSign = aMeta.x;
+      float layerIndex = aMeta.y;
+      
+      // Anchor envelope — reduce movement near outer edge (u≈0) and fully extended inner endpoints (u≈1)
+      float anchorFade = smoothstep(0.0, 0.08, u) * (1.0 - smoothstep(0.92, 1.0, u));
+      
+      // Primary slow wave (12s cycle) — continuous organic undulation
+      float primaryPhase = u * 3.14159 * 1.8 + v * 2.2 + layerIndex * 0.6;
+      float primaryWave = sin(uTime * 0.52 + primaryPhase);
+      
+      // Secondary harmonic (16s cycle) — adds natural variation
+      float secondaryPhase = u * 3.14159 * 2.3 - v * 1.7 + sideSign * 0.8;
+      float secondaryWave = sin(uTime * 0.39 + secondaryPhase) * 0.4;
+      
+      // Vertical displacement (Y-axis)
+      float yDisplacement = (primaryWave + secondaryWave) * anchorFade * uAnimationIntensity * 0.15;
+      
+      // Subtle depth movement (Z-axis) — slower phase
+      float depthPhase = u * 3.14159 * 1.2 + v * 1.5 + layerIndex * 1.2;
+      float depthWave = sin(uTime * 0.31 + depthPhase);
+      float zDisplacement = depthWave * anchorFade * uAnimationIntensity * 0.08;
+      
+      pos.y += yDisplacement;
+      pos.z += zDisplacement;
+    }
 
     // Depth-cue: front layers slightly brighter
     float depthFactor = clamp((pos.z + 4.5) / 5.5, 0.30, 1.15);
@@ -152,13 +186,43 @@ const NODE_VERT = /* glsl */`
   uniform float uGlowIntensity;
   uniform float uPixelRatio;
 
+  // Phase 2 — Animation uniforms
+  uniform float uTime;
+  uniform float uAnimationIntensity;
+
   varying vec3  vColor;
   varying vec3  vCoreColor;
   varying float vAlpha;
   varying float vTier;
 
   void main() {
-    vec3 pos = position;
+    // Phase 2: apply same deformation as wires so nodes stay attached
+    vec3 pos = aBasePosition;
+    
+    if (uAnimationIntensity > 0.001) {
+      float u = aUvParam.x;
+      float v = aUvParam.y;
+      float sideSign = aMeta.x;
+      float layerIndex = aMeta.y;
+      
+      float anchorFade = smoothstep(0.0, 0.08, u) * (1.0 - smoothstep(0.92, 1.0, u));
+      
+      float primaryPhase = u * 3.14159 * 1.8 + v * 2.2 + layerIndex * 0.6;
+      float primaryWave = sin(uTime * 0.52 + primaryPhase);
+      
+      float secondaryPhase = u * 3.14159 * 2.3 - v * 1.7 + sideSign * 0.8;
+      float secondaryWave = sin(uTime * 0.39 + secondaryPhase) * 0.4;
+      
+      float yDisplacement = (primaryWave + secondaryWave) * anchorFade * uAnimationIntensity * 0.15;
+      
+      float depthPhase = u * 3.14159 * 1.2 + v * 1.5 + layerIndex * 1.2;
+      float depthWave = sin(uTime * 0.31 + depthPhase);
+      float zDisplacement = depthWave * anchorFade * uAnimationIntensity * 0.08;
+      
+      pos.y += yDisplacement;
+      pos.z += zDisplacement;
+    }
+
     vec4 mv  = modelViewMatrix * vec4(pos, 1.0);
 
     vec3 baseTint =
@@ -307,6 +371,8 @@ export function createNeuralWireMaterials(resolvedTheme, pixelRatio = 1) {
       uOpacity:           { value: opacity       },
       uGlowIntensity:     { value: glowIntensity },
       uLayerOpacityScale: { value: layerOpacityScale },
+      uTime:              { value: 0.0 },  // Phase 2 animation
+      uAnimationIntensity:{ value: 1.0 },  // Phase 2 animation
     },
     transparent: true,
     depthWrite:  false,
@@ -325,6 +391,8 @@ export function createNeuralWireMaterials(resolvedTheme, pixelRatio = 1) {
       uOpacity:        { value: opacity       },
       uGlowIntensity:  { value: glowIntensity },
       uPixelRatio:     { value: dpr           },
+      uTime:           { value: 0.0 },  // Phase 2 animation
+      uAnimationIntensity:{ value: 1.0 },  // Phase 2 animation
     },
     transparent: true,
     depthWrite:  false,
@@ -1388,6 +1456,24 @@ export function NeuralWireField({
     updateNeuralWireMaterials(materials, resolvedTheme, dpr);
   }, [materials, resolvedTheme, dpr]);
 
+  // Phase 2: Animation loop — update time uniforms
+  useFrame((state) => {
+    const t = state.clock.elapsedTime;
+    
+    // Update all wire materials
+    ['primaryMat', 'layer0Mat', 'layer1Mat', 'layer2Mat'].forEach((k) => {
+      const m = materials[k];
+      if (m && m.uniforms.uTime) {
+        m.uniforms.uTime.value = t;
+      }
+    });
+    
+    // Update node material
+    if (materials.nodeMaterial && materials.nodeMaterial.uniforms.uTime) {
+      materials.nodeMaterial.uniforms.uTime.value = t;
+    }
+  });
+
   useEffect(() => {
     return () => {
       [primaryGeo, filamentGeo, meshGeo, deepGeo, nodeGeo, particleGeo]
@@ -1559,9 +1645,37 @@ export function NeuralWirePreview({
       root.add(o);
     });
     scene.add(root);
-    renderer.render(scene, camera);
+    
+    // Phase 2: Animation loop for standalone preview
+    const startTime = Date.now();
+    let animationId = null;
+    
+    const animate = () => {
+      const t = (Date.now() - startTime) * 0.001; // elapsed time in seconds
+      
+      // Update time uniforms for all wire materials
+      ['layer2Mat', 'layer1Mat', 'layer0Mat', 'primaryMat'].forEach((k) => {
+        const m = materials[k];
+        if (m && m.uniforms.uTime) {
+          m.uniforms.uTime.value = t;
+        }
+      });
+      
+      // Update node material
+      if (materials.nodeMaterial && materials.nodeMaterial.uniforms.uTime) {
+        materials.nodeMaterial.uniforms.uTime.value = t;
+      }
+      
+      renderer.render(scene, camera);
+      animationId = requestAnimationFrame(animate);
+    };
+    
+    animate();
 
-    return () => scene.remove(root);
+    return () => {
+      if (animationId) cancelAnimationFrame(animationId);
+      scene.remove(root);
+    };
   }, [primaryGeo, filamentGeo, meshGeo, deepGeo, nodeGeo, particleGeo, materials]);
 
   // Theme updates
