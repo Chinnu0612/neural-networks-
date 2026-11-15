@@ -65521,7 +65521,7 @@ const WIRE_VERT = (
     float depthFactor = clamp((pos.z + 4.5) / 5.5, 0.30, 1.15);
 
     // Clamp accent contribution to prevent violet dominance (DEF-02)
-    float accentW = clamp(aColorWeights.z, 0.0, 0.55);
+    float accentW = clamp(aColorWeights.z, 0.0, 0.85);
     float accentBoost = clamp(accentW * 1.1, 0.0, 0.65);
 
     vec3 blended =
@@ -65629,8 +65629,8 @@ const NODE_VERT = (
     vAlpha     = clamp(aAlpha * uOpacity, 0.0, 1.0);
     vTier      = aNodeTier;
 
-    float ps = 280.0 / max(-mv.z, 1.0);
-    gl_PointSize = clamp(aNodeSize * ps * uPixelRatio, 2.5, 80.0); // cap at 80 — no giant starbursts (DEF-09)
+    float ps = 340.0 / max(-mv.z, 1.0);
+    gl_PointSize = clamp(aNodeSize * ps * uPixelRatio, 3.2, 80.0); // cap at 80 — no giant starbursts (DEF-09)
     gl_Position  = projectionMatrix * mv;
   }
 `
@@ -65655,25 +65655,25 @@ const NODE_FRAG = (
     vec3  col = vColor;
 
     if (vTier < 0.5) {
-      // Tier 0 — small crisp dot
-      float core = exp(-r2 * 14.0) * 1.3;
-      float halo = exp(-r2 * 3.2) * 0.4;
+      // Tier 0 — small crisp dot (synaptic point)
+      float core = exp(-r2 * 14.0) * 1.6;
+      float halo = exp(-r2 * 3.0) * 0.50;
       intensity   = core + halo;
-      col = mix(vColor, vCoreColor, clamp(core * 0.7, 0.0, 0.9));
+      col = mix(vColor, vCoreColor, clamp(core * 0.75, 0.0, 0.92));
     } else if (vTier < 1.5) {
       // Tier 1 — medium junction dot
-      float core  = exp(-r2 * 20.0) * 1.6;
-      float inner = exp(-r2 * 5.0 ) * 0.7;
-      float outer = exp(-r2 * 1.8 ) * 0.28 * uGlowIntensity;
+      float core  = exp(-r2 * 20.0) * 1.9;
+      float inner = exp(-r2 * 4.8) * 0.80;
+      float outer = exp(-r2 * 1.8) * 0.38 * uGlowIntensity;
       intensity    = core + inner + outer;
-      col = mix(vColor, vCoreColor, clamp(core * 0.82, 0.0, 0.96));
+      col = mix(vColor, vCoreColor, clamp(core * 0.86, 0.0, 0.96));
     } else if (vTier < 2.5) {
       // Tier 2 — highlight nexus: crisp center, NO spike artifact (DEF-09)
-      float core  = exp(-r2 * 38.0) * 1.9;
-      float bloom = exp(-r2 * 8.0 ) * 0.9;
-      float soft  = exp(-r2 * 2.2 ) * 0.4 * uGlowIntensity;
+      float core  = exp(-r2 * 34.0) * 2.2;
+      float bloom = exp(-r2 * 7.0) * 1.1;
+      float soft  = exp(-r2 * 2.0) * 0.52 * uGlowIntensity;
       intensity    = core + bloom + soft;
-      col = mix(vColor, vCoreColor, clamp(core * 0.9 + bloom * 0.22, 0.0, 0.98));
+      col = mix(vColor, vCoreColor, clamp(core * 0.92 + bloom * 0.28, 0.0, 0.99));
     } else {
       // Tier 3 — background bokeh
       float disc = smoothstep(1.0, 0.1, r) * exp(-r2 * 1.6);
@@ -66183,11 +66183,62 @@ function buildLineGeo(buf) {
 function emptyBuf() {
   return { positions: [], basePositions: [], colorWeights: [], alphas: [], uvParams: [], metas: [] };
 }
+class NeuralGraph {
+  constructor() {
+    this.nodes = /* @__PURE__ */ new Map();
+    this.edges = [];
+    this.adjacency = /* @__PURE__ */ new Map();
+  }
+  addNode(node) {
+    this.nodes.set(node.id, node);
+    if (!this.adjacency.has(node.id)) {
+      this.adjacency.set(node.id, /* @__PURE__ */ new Set());
+    }
+    return node;
+  }
+  hasEdge(idA, idB) {
+    const adj = this.adjacency.get(idA);
+    return adj ? adj.has(idB) : false;
+  }
+  addEdge(nodeA, nodeB, edgeType = "secondary", extra = {}) {
+    if (!nodeA || !nodeB || nodeA.id === nodeB.id) return null;
+    if (this.hasEdge(nodeA.id, nodeB.id)) return null;
+    const edge = {
+      id: `e_${nodeA.id}_${nodeB.id}`,
+      nodeA,
+      nodeB,
+      edgeType,
+      layerIndex: extra.layerIndex ?? nodeA.layerIndex ?? 0,
+      ...extra
+    };
+    this.edges.push(edge);
+    this.adjacency.get(nodeA.id).add(nodeB.id);
+    this.adjacency.get(nodeB.id).add(nodeA.id);
+    nodeA.degree = (nodeA.degree || 0) + 1;
+    nodeB.degree = (nodeB.degree || 0) + 1;
+    nodeA.neighbors.push(nodeB.id);
+    nodeB.neighbors.push(nodeA.id);
+    nodeA.edges.push(edge.id);
+    nodeB.edges.push(edge.id);
+    return edge;
+  }
+}
+function segmentsCross2D(p1, p2, p3, p4) {
+  const x1 = p1.x, y1 = p1.y;
+  const x2 = p2.x, y2 = p2.y;
+  const x3 = p3.x, y3 = p3.y;
+  const x4 = p4.x, y4 = p4.y;
+  const den = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
+  if (Math.abs(den) < 1e-6) return false;
+  const t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / den;
+  const s = -((x1 - x2) * (y1 - y3) - (y1 - y2) * (x1 - x3)) / den;
+  return t > 0.06 && t < 0.94 && s > 0.06 && s < 0.94;
+}
 function generateNeuralWireGeometry(layout) {
   const layerCfgs = [
     {
       layerIndex: 0,
-      numU: Math.round(60 * layout.densityScale),
+      numU: Math.round(54 * layout.densityScale),
       subSteps: 3,
       zBaseOffset: 0.25,
       verticalSpreadScale: 1,
@@ -66195,7 +66246,7 @@ function generateNeuralWireGeometry(layout) {
     },
     {
       layerIndex: 1,
-      numU: Math.round(46 * layout.densityScale),
+      numU: Math.round(42 * layout.densityScale),
       subSteps: 2,
       zBaseOffset: -1.45,
       verticalSpreadScale: 1.14,
@@ -66203,7 +66254,7 @@ function generateNeuralWireGeometry(layout) {
     },
     {
       layerIndex: 2,
-      numU: Math.round(34 * layout.densityScale),
+      numU: Math.round(30 * layout.densityScale),
       subSteps: 2,
       zBaseOffset: -3.1,
       verticalSpreadScale: 1.28,
@@ -66225,6 +66276,7 @@ function generateNeuralWireGeometry(layout) {
     metas: []
   };
   const canonicalVertices = [];
+  const graph = new NeuralGraph();
   const sides = [
     { side: "left", sideSign: -1, isRight: false, seed: 20260501 },
     { side: "right", sideSign: 1, isRight: true, seed: 20260917 }
@@ -66233,10 +66285,9 @@ function generateNeuralWireGeometry(layout) {
     const rng = createSeededRandom(sideCfg.seed);
     layerCfgs.forEach((layerCfg) => {
       const { layerIndex, numU, subSteps } = layerCfg;
-      const filBuf = layerIndex === 2 ? deepBuf : filamentBuf;
-      const connBuf = layerIndex === 2 ? deepBuf : meshBuf;
       const descs = makeStrandDescriptors(layerIndex, sideCfg.isRight, layout.densityScale, rng);
       const numV = descs.length;
+      const layerNodes = [];
       const grid = Array.from({ length: numU }, () => new Array(numV));
       for (let i = 0; i < numU; i++) {
         const uLin = i / (numU - 1);
@@ -66246,24 +66297,52 @@ function generateNeuralWireGeometry(layout) {
           const stagger = (j % 2 - 0.5) * 0.38 + (rng() - 0.5) * 0.24;
           const uEff = i > 0 && i < numU - 1 ? MathUtils.clamp(uWarp + stagger / (numU - 1), 2e-3, 0.998) : MathUtils.clamp(uLin, 0, 1);
           const pt = evalSurface(uEff, desc.v, desc, layerCfg, sideCfg, layout);
+          const nodeId = `n_${sideCfg.side}_L${layerIndex}_u${i}_v${j}`;
           const vr = {
             ...pt,
+            id: nodeId,
             uIndex: i,
             vIndex: j,
             strandIndex: j,
             layerIndex,
             sideSign: sideCfg.sideSign,
             isRight: sideCfg.isRight,
+            streamId: desc.streamId,
             descriptor: desc,
             degree: 0,
-            heroJunction: desc.isPrimary ? 1 : 0
+            heroJunction: desc.isPrimary ? 1 : 0,
+            tier: 0,
+            size: 0.16 + 0.06 * rng(),
+            alpha: pt.edgeFade * (0.8 + 0.16 * rng()),
+            colorWeights: [0.8, 0.2, 0, 0.1],
+            neighbors: [],
+            edges: []
           };
           grid[i][j] = vr;
-          canonicalVertices.push(vr);
+          graph.addNode(vr);
+          layerNodes.push(vr);
+        }
+      }
+      const numBins = 36;
+      const bins = Array.from({ length: numBins }, () => []);
+      for (const node of layerNodes) {
+        const bIdx = MathUtils.clamp(Math.floor(node.u * numBins), 0, numBins - 1);
+        bins[bIdx].push(node);
+      }
+      const edgeBins = Array.from({ length: numBins }, () => []);
+      function registerEdge(edge) {
+        if (!edge) return;
+        const minU = Math.min(edge.nodeA.u, edge.nodeB.u);
+        const maxU = Math.max(edge.nodeA.u, edge.nodeB.u);
+        const b0 = MathUtils.clamp(Math.floor(minU * numBins), 0, numBins - 1);
+        const b1 = MathUtils.clamp(Math.floor(maxU * numBins), 0, numBins - 1);
+        for (let b = b0; b <= b1; b++) {
+          edgeBins[b].push(edge);
         }
       }
       for (let j = 0; j < numV; j++) {
         const desc = descs[j];
+        if (!desc.isPrimary || layerIndex > 1) continue;
         const ctrlPts = [];
         for (let i = 0; i < numU; i++) {
           const gv = grid[i][j];
@@ -66277,6 +66356,11 @@ function generateNeuralWireGeometry(layout) {
           let sv;
           if (exactI >= 0 && exactI < numU) {
             sv = grid[exactI][j];
+            if (exactI > 0) {
+              const prevNode = grid[exactI - 1][j];
+              const edge = graph.addEdge(prevNode, sv, "primary", { layerIndex });
+              registerEdge(edge);
+            }
           } else {
             const t = s / nSamples;
             const pt = curve.getPoint(t);
@@ -66303,172 +66387,220 @@ function generateNeuralWireGeometry(layout) {
           }
           const app = vertexAppearance(sv, desc, layerIndex, "filament");
           if (prevV) {
-            const buf = desc.isPrimary && layerIndex <= 1 ? primaryBuf : filBuf;
-            pushSegment(buf, prevV, sv, prevApp, app);
+            pushSegment(primaryBuf, prevV, sv, prevApp, app);
           }
           prevV = sv;
           prevApp = app;
         }
       }
-      const maxEdgeDist = (layerIndex === 0 ? 1.1 : layerIndex === 1 ? 1.24 : 1.4) * layout.verticalScale;
-      const minEdgeDist = 0.03 * layout.verticalScale;
-      const maxSlope = 1.35;
-      const usedEdges = /* @__PURE__ */ new Set();
-      const edgeKey = (a, b) => {
-        const ia = a.uIndex * 1e3 + a.vIndex;
-        const ib = b.uIndex * 1e3 + b.vIndex;
-        return ia < ib ? `${ia}_${ib}` : `${ib}_${ia}`;
-      };
-      const connect = (vA, vB, dBoost = 0) => {
-        if (!vA || !vB || vA === vB) return false;
-        const key = edgeKey(vA, vB);
-        if (usedEdges.has(key)) return false;
-        const dx = Math.abs(vA.x - vB.x);
-        const dy = Math.abs(vA.y - vB.y);
-        const dz = Math.abs(vA.z - vB.z);
-        const dist = Math.hypot(dx, dy, dz * 0.42);
-        if (dx < 0.04 || dy / (dx + 1e-3) > maxSlope || dist > maxEdgeDist || dist < minEdgeDist) {
-          return false;
+      for (let j = 0; j < numV; j++) {
+        const desc = descs[j];
+        if (desc.isPrimary && layerIndex <= 1) continue;
+        const filBuf = layerIndex === 2 ? deepBuf : filamentBuf;
+        const ctrlPts = [];
+        for (let i = 0; i < numU; i++) {
+          const gv = grid[i][j];
+          ctrlPts.push(new Vector3(gv.x, gv.y, gv.z));
         }
-        usedEdges.add(key);
-        vA.degree += 1;
-        vB.degree += 1;
-        if (vA.descriptor.isPrimary || vB.descriptor.isPrimary) {
-          vA.heroJunction += 1;
-          vB.heroJunction += 1;
-        }
-        const aA = vertexAppearance(vA, vA.descriptor, layerIndex, "connection", dBoost);
-        const aB = vertexAppearance(vB, vB.descriptor, layerIndex, "connection", dBoost);
-        pushSegment(connBuf, vA, vB, aA, aB);
-        return true;
-      };
-      const cellDensityAt = (u, v, pp) => {
-        const uPeak = sideCfg.isRight ? 0.42 : 0.44;
-        const chamberBoost = gp(u, uPeak, 0.28) * 0.5 + gp(u, uPeak + 0.3, 0.22) * 0.35;
-        const pinchBoost = pp * 0.4;
-        const noise = 0.5 + 0.3 * Math.sin(u * 11.3 + v * 7.1) + 0.2 * Math.cos(u * 7.7 - v * 5.3);
-        return MathUtils.clamp(0.42 + chamberBoost + pinchBoost + noise * 0.18, 0.28, 1);
-      };
-      for (let i = 0; i < numU - 1; i++) {
-        for (let j = 0; j < numV - 1; j++) {
-          const v00 = grid[i][j];
-          const v01 = grid[i][j + 1];
-          if (v00.edgeFade <= 0.03) continue;
-          if (v00.descriptor.streamId !== v01.descriptor.streamId) continue;
-          const cd = cellDensityAt(v00.u, v00.v, v00.pinchProx);
-          const taperD = 1 - 0.5 * Math.pow(MathUtils.smoothstep(v00.u, 0.7, 0.98), 1.4);
-          const baseP = (layerIndex === 0 ? 0.78 : layerIndex === 1 ? 0.62 : 0.44) * cd * taperD;
-          if (rng() > baseP) continue;
-          const v10 = grid[i + 1][j];
-          const v11 = grid[i + 1][j + 1];
-          const v20 = i + 2 < numU ? grid[i + 2][j] : null;
-          const v21 = i + 2 < numU ? grid[i + 2][j + 1] : null;
-          const v31 = i + 3 < numU ? grid[i + 3][j + 1] : null;
-          const par = (i + j + (sideCfg.isRight ? 1 : 0)) % 2 === 0;
-          if (par) {
-            if (!connect(v00, v11, cd * 0.5)) {
-              if (v21) connect(v00, v21, cd * 0.42);
-              else if (v31) connect(v00, v31, cd * 0.38);
-            }
-            if (rng() < 0.7) {
-              if (!connect(v01, v10, cd * 0.48) && v20) connect(v01, v20, cd * 0.4);
+        const curve = new CatmullRomCurve3(ctrlPts, false, "centripetal", 0.5);
+        const secSubSteps = layerIndex === 0 ? 2 : 1;
+        const nSamples = (numU - 1) * secSubSteps;
+        let prevV = null, prevApp = null;
+        for (let s = 0; s <= nSamples; s++) {
+          const exactI = s % secSubSteps === 0 ? s / secSubSteps : -1;
+          let sv;
+          if (exactI >= 0 && exactI < numU) {
+            sv = grid[exactI][j];
+            if (exactI > 0 && rng() < 0.88) {
+              const prevNode = grid[exactI - 1][j];
+              const edgeType = desc.role === "accent" ? "accent" : "secondary";
+              const edge = graph.addEdge(prevNode, sv, edgeType, { layerIndex });
+              registerEdge(edge);
             }
           } else {
-            if (!connect(v01, v10, cd * 0.52)) {
-              if (v20) connect(v01, v20, cd * 0.44);
-            }
-            if (rng() < 0.68) {
-              if (!connect(v00, v11, cd * 0.48) && v21) connect(v00, v21, cd * 0.4);
-            }
+            const t = s / nSamples;
+            const pt = curve.getPoint(t);
+            const iF = Math.floor(t * (numU - 1));
+            const iC = Math.min(numU - 1, iF + 1);
+            const fr = t * (numU - 1) - iF;
+            const v0 = grid[iF][j];
+            const v1 = grid[iC][j];
+            const uI = MathUtils.lerp(v0.u, v1.u, fr);
+            const sm = evalSurface(uI, desc.v, desc, layerCfg, sideCfg, layout);
+            sv = {
+              x: pt.x,
+              y: pt.y,
+              z: pt.z,
+              u: uI,
+              v: desc.v,
+              pinchProx: sm.pinchProx,
+              crestProx: sm.crestProx,
+              edgeFade: sm.edgeFade,
+              sideSign: sideCfg.sideSign,
+              layerIndex,
+              strandIndex: j
+            };
           }
-          if (j + 2 < numV && grid[i][j + 2].descriptor.streamId === v00.descriptor.streamId && rng() < 0.36 * cd) {
-            if (!connect(v00, grid[i + 1][j + 2], cd * 0.4) && i + 2 < numU) {
-              connect(v00, grid[i + 2][j + 2], cd * 0.36);
-            }
+          const app = vertexAppearance(sv, desc, layerIndex, "filament");
+          if (prevV && sv.edgeFade > 0.02) {
+            pushSegment(filBuf, prevV, sv, prevApp, app);
           }
+          prevV = sv;
+          prevApp = app;
         }
-      }
-      const bridgeMax = 0.65 * layout.verticalScale;
-      for (let i = 1; i < numU - 2; i++) {
-        for (let jA = 0; jA < numV; jA++) {
-          const vA = grid[i][jA];
-          if (vA.edgeFade <= 0.04) continue;
-          let bridgesDone = 0;
-          for (let jB = jA + 1; jB < numV && bridgesDone < 2; jB++) {
-            for (let di = 1; di <= 2; di++) {
-              const vB = grid[i + di][jB];
-              if (vA.descriptor.streamId === vB.descriptor.streamId) continue;
-              if (vB.edgeFade <= 0.04) continue;
-              const dist3 = Math.hypot(
-                Math.abs(vA.x - vB.x),
-                Math.abs(vA.y - vB.y),
-                Math.abs(vA.z - vB.z) * 0.5
-              );
-              if (dist3 <= bridgeMax && Math.abs(vA.y - vB.y) / (Math.abs(vA.x - vB.x) + 1e-3) <= 1.1) {
-                if (rng() < 0.58 + 0.28 * vA.pinchProx) {
-                  if (connect(vA, vB, 0.6)) {
-                    bridgesDone++;
-                    break;
-                  }
+        for (let i = 0; i < numU - 1; i++) {
+          const vA = grid[i][j];
+          if (!vA || vA.edgeFade <= 0.04) continue;
+          if (rng() < 0.28) {
+            const targetJ = j + (rng() < 0.5 ? 1 : -1);
+            if (targetJ >= 0 && targetJ < numV) {
+              const vTarget = grid[i + 1][targetJ];
+              if (vTarget && vTarget.descriptor.streamId === desc.streamId && vTarget.edgeFade > 0.04) {
+                const edge = graph.addEdge(vA, vTarget, "secondary", { layerIndex });
+                if (edge) {
+                  registerEdge(edge);
+                  const aA = vertexAppearance(vA, desc, layerIndex, "filament");
+                  const aB = vertexAppearance(vTarget, vTarget.descriptor, layerIndex, "filament");
+                  pushSegment(filBuf, vA, vTarget, aA, aB);
                 }
               }
             }
           }
         }
       }
-      for (let i = 1; i < numU - 1; i++) {
-        for (let j = 0; j < numV; j++) {
-          const gv = grid[i][j];
-          if (gv.edgeFade <= 0.04) continue;
-          const desc = gv.descriptor;
-          const deg = gv.degree;
-          if (layerIndex === 2 && rng() < 0.18) {
-            pushNode(
-              nodeData,
-              gv,
-              [0.4, 0.65, 0.28, 0.06],
-              gv.edgeFade * (0.38 + 0.24 * rng()),
-              0.44 + 0.48 * rng(),
-              3
-            );
-            continue;
-          }
-          if (desc.isBeadCanopy && layerIndex === 0 && i % 2 === 0 && gv.u < 0.76) {
-            pushNode(
-              nodeData,
-              gv,
-              [0.82, 0.22, 0.18, 0.5],
-              gv.edgeFade * (0.82 + 0.12 * rng()),
-              0.17 + 0.07 * rng(),
-              i % 6 === 0 ? 1 : 0
-            );
-            continue;
-          }
-          if (deg < 2) continue;
-          const isMedium = layerIndex === 0 && deg >= 3 && (gv.heroJunction >= 1 || rng() < 0.52) || layerIndex === 0 && desc.isPrimary && deg >= 2 && (gv.pinchProx > 0.32 || gv.crestProx > 0.34) && rng() < 0.42 || layerIndex === 1 && deg >= 3 && rng() < 0.32;
-          if (isMedium) {
-            const aM = desc.role === "accent" ? 0.8 : 0.14 + 0.22 * rng();
-            pushNode(
-              nodeData,
-              gv,
-              [0.86, 0.14, aM, 0.7],
-              gv.edgeFade * (0.86 + 0.12 * rng()),
-              0.22 + 0.1 * rng() + 0.012 * Math.min(deg, 5),
-              1
-            );
-          } else {
-            const smallP = layerIndex === 0 ? Math.min(0.62, 0.28 + 0.08 * deg + 0.18 * gv.pinchProx) : layerIndex === 1 ? Math.min(0.4, 0.16 + 0.06 * deg) : 0.11;
-            if (rng() < smallP) {
-              const app = vertexAppearance(gv, desc, layerIndex, "filament");
-              pushNode(
-                nodeData,
-                gv,
-                [Math.max(0.74, app.weights[0]), app.weights[1] * 0.4, app.weights[2] * 0.5, 0.38 + 0.24 * gv.pinchProx],
-                gv.edgeFade * (0.78 + 0.16 * rng()),
-                0.12 + 0.06 * rng(),
-                0
-              );
+      const connBuf = layerIndex === 2 ? deepBuf : meshBuf;
+      const minEdgeDist = 0.045 * layout.verticalScale;
+      const maxSlope = 1.35;
+      function canConnect2D(nA, nB) {
+        const minU = Math.min(nA.u, nB.u);
+        const maxU = Math.max(nA.u, nB.u);
+        const b0 = MathUtils.clamp(Math.floor(minU * numBins), 0, numBins - 1);
+        const b1 = MathUtils.clamp(Math.floor(maxU * numBins), 0, numBins - 1);
+        for (let b = b0; b <= b1; b++) {
+          for (const existingEdge of edgeBins[b]) {
+            const eA = existingEdge.nodeA;
+            const eB = existingEdge.nodeB;
+            if (eA.id === nA.id || eA.id === nB.id || eB.id === nA.id || eB.id === nB.id) continue;
+            if (segmentsCross2D(nA, nB, eA, eB)) {
+              return false;
             }
+          }
+        }
+        return true;
+      }
+      function addGraphConnection(vA, vB, edgeType = "mesh", dBoost = 0) {
+        if (!vA || !vB || vA.id === vB.id) return false;
+        if (graph.hasEdge(vA.id, vB.id)) return false;
+        const dx = Math.abs(vA.x - vB.x);
+        const dy = Math.abs(vA.y - vB.y);
+        const dz = Math.abs(vA.z - vB.z);
+        const dist = Math.hypot(dx, dy, dz * 0.45);
+        const flareEnv = 1 - 0.42 * Math.exp(-vA.u * 2.2);
+        const maxEdgeDist = (layerIndex === 0 ? 0.78 : layerIndex === 1 ? 0.95 : 1.15) * layout.verticalScale * flareEnv;
+        if (dx < 0.03 || dy / (dx + 1e-3) > maxSlope || dist > maxEdgeDist || dist < minEdgeDist) {
+          return false;
+        }
+        if (!canConnect2D(vA, vB)) return false;
+        const edge = graph.addEdge(vA, vB, edgeType, { layerIndex });
+        if (edge) {
+          registerEdge(edge);
+          vA.heroJunction = (vA.heroJunction || 0) + (vB.descriptor?.isPrimary ? 1 : 0);
+          vB.heroJunction = (vB.heroJunction || 0) + (vA.descriptor?.isPrimary ? 1 : 0);
+          const aA = vertexAppearance(vA, vA.descriptor, layerIndex, "connection", dBoost);
+          const aB = vertexAppearance(vB, vB.descriptor, layerIndex, "connection", dBoost);
+          pushSegment(connBuf, vA, vB, aA, aB);
+          return true;
+        }
+        return false;
+      }
+      const cellDensityAt = (u, v, pp) => {
+        const uPeak = sideCfg.isRight ? 0.42 : 0.44;
+        const chamberBoost = gp(u, uPeak, 0.28) * 0.55 + gp(u, uPeak + 0.3, 0.22) * 0.38;
+        const pinchBoost = pp * 0.45;
+        const noise = 0.5 + 0.3 * Math.sin(u * 11.3 + v * 7.1) + 0.2 * Math.cos(u * 7.7 - v * 5.3);
+        return MathUtils.clamp(0.44 + chamberBoost + pinchBoost + noise * 0.18, 0.3, 1);
+      };
+      for (const nodeA of layerNodes) {
+        if (nodeA.edgeFade <= 0.04) continue;
+        const cd = cellDensityAt(nodeA.u, nodeA.v, nodeA.pinchProx);
+        const bIdx = MathUtils.clamp(Math.floor(nodeA.u * numBins), 0, numBins - 1);
+        const minB = Math.max(0, bIdx - 2);
+        const maxB = Math.min(numBins - 1, bIdx + 3);
+        const candidates = [];
+        const flareEnv = 1 - 0.42 * Math.exp(-nodeA.u * 2.2);
+        const maxDistA = (layerIndex === 0 ? 0.78 : layerIndex === 1 ? 0.95 : 1.15) * layout.verticalScale * flareEnv;
+        for (let b = minB; b <= maxB; b++) {
+          for (const nodeB of bins[b]) {
+            if (nodeB.id === nodeA.id) continue;
+            if (nodeB.u < nodeA.u - 1e-3) continue;
+            if (nodeB.edgeFade <= 0.04) continue;
+            if (graph.hasEdge(nodeA.id, nodeB.id)) continue;
+            const dist = Math.hypot(nodeA.x - nodeB.x, nodeA.y - nodeB.y, (nodeA.z - nodeB.z) * 0.45);
+            if (dist <= maxDistA && dist >= minEdgeDist) {
+              candidates.push({ node: nodeB, dist });
+            }
+          }
+        }
+        candidates.sort((a, b) => a.dist - b.dist);
+        const maxNew = layerIndex === 0 ? 3 : 2;
+        let added = 0;
+        for (const cand of candidates) {
+          if (added >= maxNew) break;
+          if (nodeA.degree >= (nodeA.descriptor?.isPrimary ? 8 : 5)) break;
+          if (cand.node.degree >= 6) continue;
+          const prob = cd * (layerIndex === 0 ? 0.75 : layerIndex === 1 ? 0.55 : 0.35);
+          if (rng() > prob) continue;
+          const edgeType = nodeA.descriptor?.role === "accent" && cand.node.descriptor?.role === "accent" ? "accent" : "mesh";
+          if (addGraphConnection(nodeA, cand.node, edgeType, cd * 0.5)) {
+            added++;
+            for (const neighborId of nodeA.neighbors) {
+              const mutual = graph.nodes.get(neighborId);
+              if (mutual && mutual.id !== cand.node.id && !graph.hasEdge(mutual.id, cand.node.id)) {
+                const distM = Math.hypot(mutual.x - cand.node.x, mutual.y - cand.node.y, (mutual.z - cand.node.z) * 0.45);
+                if (distM <= maxDistA && distM >= minEdgeDist && rng() < 0.6 * cd) {
+                  addGraphConnection(mutual, cand.node, "mesh", cd * 0.4);
+                }
+              }
+            }
+          }
+        }
+      }
+      const bridgeMax = 0.58 * layout.verticalScale;
+      for (const nodeA of layerNodes) {
+        if (nodeA.edgeFade <= 0.04 || nodeA.streamId !== 0) continue;
+        const bIdx = MathUtils.clamp(Math.floor(nodeA.u * numBins), 0, numBins - 1);
+        for (let b = Math.max(0, bIdx - 1); b <= Math.min(numBins - 1, bIdx + 2); b++) {
+          for (const nodeB of bins[b]) {
+            if (nodeB.streamId !== 1 || nodeB.edgeFade <= 0.04) continue;
+            const dist3 = Math.hypot(
+              Math.abs(nodeA.x - nodeB.x),
+              Math.abs(nodeA.y - nodeB.y),
+              Math.abs(nodeA.z - nodeB.z) * 0.5
+            );
+            if (dist3 <= bridgeMax && Math.abs(nodeA.y - nodeB.y) / (Math.abs(nodeA.x - nodeB.x) + 1e-3) <= 1.15) {
+              if (rng() < 0.55 + 0.28 * nodeA.pinchProx) {
+                addGraphConnection(nodeA, nodeB, "mesh", 0.6);
+              }
+            }
+          }
+        }
+      }
+      for (const node of layerNodes) {
+        if (node.degree === 0 && node.edgeFade > 0.04) {
+          const bIdx = MathUtils.clamp(Math.floor(node.u * numBins), 0, numBins - 1);
+          let best = null, bestDist = Infinity;
+          for (let b = Math.max(0, bIdx - 2); b <= Math.min(numBins - 1, bIdx + 2); b++) {
+            for (const nb of bins[b]) {
+              if (nb.id === node.id || nb.edgeFade <= 0.04) continue;
+              const dist = Math.hypot(node.x - nb.x, node.y - nb.y, (node.z - nb.z) * 0.45);
+              if (dist < bestDist && dist > minEdgeDist) {
+                bestDist = dist;
+                best = nb;
+              }
+            }
+          }
+          if (best) {
+            addGraphConnection(node, best, "mesh");
           }
         }
       }
@@ -66476,33 +66608,70 @@ function generateNeuralWireGeometry(layout) {
         const nexusUs = sideCfg.isRight ? [0.18, 0.34, 0.5, 0.68] : [0.14, 0.34, 0.52, 0.68];
         const nexusSizes = [0.88, 0.92, 0.8, 0.68];
         nexusUs.forEach((uT, ni) => {
-          const iMin = Math.max(1, Math.round((uT - 0.06) * (numU - 1)));
-          const iMax = Math.min(numU - 2, Math.round((uT + 0.06) * (numU - 1)));
           let best = null, bestScore = Infinity;
-          for (let i = iMin; i <= iMax; i++) {
-            for (let j = 0; j < numV; j++) {
-              const vc = grid[i][j];
-              const d = vc.descriptor;
-              const sc = Math.abs(vc.u - uT) + Math.abs(d.streamV - 0.5) * 0.3 - Math.min(vc.degree, 5) * 0.03 - (d.isPrimary ? 0.05 : 0);
-              if (sc < bestScore) {
-                bestScore = sc;
-                best = vc;
-              }
+          for (const node of layerNodes) {
+            const d = node.descriptor;
+            const sc = Math.abs(node.u - uT) + Math.abs(d.streamV - 0.5) * 0.3 - Math.min(node.degree, 6) * 0.04 - (d.isPrimary ? 0.06 : 0);
+            if (sc < bestScore) {
+              bestScore = sc;
+              best = node;
             }
           }
           if (best) {
+            best.tier = 2;
+            best.size = nexusSizes[ni];
             const isAccentNexus = ni >= 2 && best.descriptor.role === "accent";
-            pushNode(
-              nodeData,
-              best,
-              [isAccentNexus ? 0.2 : 0.9, 0.14, isAccentNexus ? 0.85 : 0.08, 1],
-              0.95 - ni * 0.05,
-              nexusSizes[ni],
-              2
-              // Tier 2 — no co-located Tier 3 bokeh (DEF-09)
-            );
+            best.colorWeights = [isAccentNexus ? 0.2 : 0.92, 0.12, isAccentNexus ? 0.85 : 0.08, 1];
+            best.alpha = 0.96 - ni * 0.04;
           }
         });
+      }
+      for (const node of layerNodes) {
+        if (node.edgeFade <= 0.03 || node.degree === 0) continue;
+        if (node.tier === 2) {
+          pushNode(nodeData, node, node.colorWeights, node.alpha, node.size, node.tier);
+          canonicalVertices.push(node);
+          continue;
+        }
+        if (layerIndex === 2 && rng() < 0.22) {
+          node.tier = 3;
+          node.size = 0.44 + 0.48 * rng();
+          node.colorWeights = [0.4, 0.65, 0.28, 0.06];
+          node.alpha = node.edgeFade * (0.38 + 0.24 * rng());
+          pushNode(nodeData, node, node.colorWeights, node.alpha, node.size, node.tier);
+          canonicalVertices.push(node);
+          continue;
+        }
+        if (node.descriptor.isBeadCanopy && layerIndex === 0 && node.uIndex % 2 === 0 && node.u < 0.76) {
+          node.tier = node.uIndex % 6 === 0 ? 1 : 0;
+          node.size = 0.17 + 0.07 * rng();
+          node.colorWeights = [0.82, 0.22, 0.18, 0.5];
+          node.alpha = node.edgeFade * (0.82 + 0.12 * rng());
+          pushNode(nodeData, node, node.colorWeights, node.alpha, node.size, node.tier);
+          canonicalVertices.push(node);
+          continue;
+        }
+        const isMedium = layerIndex === 0 && node.degree >= 4 && (node.heroJunction >= 1 || rng() < 0.42) || layerIndex === 0 && node.descriptor.isPrimary && node.degree >= 3 && (node.pinchProx > 0.32 || node.crestProx > 0.34) || layerIndex === 1 && node.degree >= 4 && rng() < 0.35;
+        if (isMedium) {
+          node.tier = 1;
+          const aM = node.descriptor.role === "accent" ? 0.8 : 0.14 + 0.22 * rng();
+          node.size = 0.25 + 0.1 * rng() + 0.014 * Math.min(node.degree, 6);
+          node.alpha = node.edgeFade * (0.88 + 0.12 * rng());
+          node.colorWeights = [0.88, 0.14, aM, 0.7];
+          pushNode(nodeData, node, node.colorWeights, node.alpha, node.size, node.tier);
+          canonicalVertices.push(node);
+        } else {
+          const smallP = layerIndex === 0 ? Math.min(0.88, 0.48 + 0.08 * node.degree + 0.18 * node.pinchProx) : layerIndex === 1 ? Math.min(0.68, 0.32 + 0.06 * node.degree) : 0.28;
+          if (rng() < smallP) {
+            node.tier = 0;
+            const app = vertexAppearance(node, node.descriptor, layerIndex, "filament");
+            node.size = 0.15 + 0.06 * rng();
+            node.alpha = node.edgeFade * (0.8 + 0.16 * rng());
+            node.colorWeights = [Math.max(0.74, app.weights[0]), app.weights[1] * 0.4, app.weights[2] * 0.5, 0.38 + 0.24 * node.pinchProx];
+            pushNode(nodeData, node, node.colorWeights, node.alpha, node.size, node.tier);
+            canonicalVertices.push(node);
+          }
+        }
       }
     });
   });
@@ -66522,7 +66691,8 @@ function generateNeuralWireGeometry(layout) {
     meshGeo: buildLineGeo(meshBuf),
     deepGeo: buildLineGeo(deepBuf),
     nodeGeo,
-    canonicalVertices
+    canonicalVertices,
+    graph
   };
 }
 function generateNeuralWireParticles(canonicalVertices, layout) {
